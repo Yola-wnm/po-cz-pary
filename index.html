@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biologia Komórki - Połącz w Pary</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Lato', sans-serif;
+            background-color: #f8fafc; /* Bardzo jasne tło */
+        }
+        h1, h2, button {
+            font-family: 'Roboto Mono', monospace;
+        }
+        .tile {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .tile.selected {
+            transform: scale(1.05);
+            box-shadow: 0 0 0 3px #3b82f6; /* Niebieska ramka dla zaznaczenia */
+            background-color: #eff6ff;
+        }
+        .tile.correct {
+            background-color: #dcfce7; /* Jasnozielony dla poprawnych */
+            border-color: #22c55e;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .tile.incorrect {
+            animation: shake 0.5s;
+            background-color: #fee2e2; /* Jasnoczerwony dla błędnych */
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4 sm:p-6">
+
+    <div class="w-full max-w-4xl mx-auto">
+        <div class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Biologia Komórki: Połącz w Pary</h1>
+            <p id="instructions" class="text-gray-600 mt-2">Wybierz pojęcie, a następnie pasującą do niego definicję.</p>
+        </div>
+
+        <div id="game-board" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Kolumna na pojęcia -->
+            <div id="terms-container" class="space-y-4">
+                <!-- Kafelki pojęć zostaną wstawione tutaj przez JS -->
+            </div>
+            <!-- Kolumna na definicje -->
+            <div id="definitions-container" class="space-y-4">
+                <!-- Kafelki definicji zostaną wstawione tutaj przez JS -->
+            </div>
+        </div>
+        
+        <div id="feedback-container" class="text-center mt-6 h-16 flex flex-col justify-center items-center">
+             <!-- Komunikaty zwrotne pojawią się tutaj -->
+        </div>
+
+        <div class="text-center mt-4">
+            <button id="reset-btn" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Resetuj Grę
+            </button>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- Dane merytoryczne ---
+        const gameData = [
+            {
+                id: 1,
+                term: "Apoptoza",
+                definition: "Programowana, genetycznie kontrolowana śmierć komórki, niezbędna do eliminacji uszkodzonych lub niepotrzebnych komórek i utrzymania homeostazy tkankowej."
+            },
+            {
+                id: 2,
+                term: "Splicing alternatywny",
+                definition: "Proces obróbki pre-mRNA, który pozwala na łączenie eksonów w różne kombinacje, prowadząc do syntezy wielu wariantów białek z jednego genu."
+            },
+            {
+                id: 3,
+                term: "Białka opiekuńcze (chaperony)",
+                definition: "Klasa białek asystujących w prawidłowym fałdowaniu, stabilizacji i transporcie innych polipeptydów, zapobiegając ich nieprawidłowej agregacji."
+            },
+            {
+                id: 4,
+                term: "Modyfikacja potranslacyjna",
+                definition: "Chemiczna zmiana białka po jego syntezie na rybosomie (np. fosforylacja, glikozylacja), kluczowa dla jego funkcji, lokalizacji i stabilności."
+            },
+            {
+                id: 5,
+                term: "Transkryptaza odwrotna",
+                definition: "Enzym syntetyzujący nić DNA na matrycy RNA. Charakterystyczny dla retrowirusów, ale obecny też w komórkach eukariotycznych (np. telomeraza)."
+            }
+        ];
+
+        // --- Elementy DOM ---
+        const termsContainer = document.getElementById('terms-container');
+        const definitionsContainer = document.getElementById('definitions-container');
+        const feedbackContainer = document.getElementById('feedback-container');
+        const resetButton = document.getElementById('reset-btn');
+
+        // --- Stan gry ---
+        let selectedTerm = null;
+        let selectedDefinition = null;
+        let correctPairs = 0;
+        let isChecking = false; // Flaga zapobiegająca klikaniu podczas sprawdzania
+
+        // --- Funkcje pomocnicze ---
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+        
+        function showFeedback(message, isCorrect) {
+            feedbackContainer.innerHTML = `<p class="text-xl font-bold ${isCorrect ? 'text-green-600' : 'text-red-600'}">${message}</p>`;
+            setTimeout(() => {
+                if (correctPairs < gameData.length) {
+                   feedbackContainer.innerHTML = '';
+                }
+            }, 1500);
+        }
+
+        // --- Logika gry ---
+        function createBoard() {
+            // Resetowanie
+            termsContainer.innerHTML = '';
+            definitionsContainer.innerHTML = '';
+            correctPairs = 0;
+            isChecking = false;
+            selectedTerm = null;
+            selectedDefinition = null;
+            feedbackContainer.innerHTML = '';
+
+            const shuffledTerms = shuffle([...gameData]);
+            const shuffledDefinitions = shuffle([...gameData]);
+
+            shuffledTerms.forEach(item => {
+                const tile = document.createElement('div');
+                tile.className = 'tile p-4 bg-white border border-gray-300 rounded-lg shadow-sm';
+                tile.textContent = item.term;
+                tile.dataset.id = item.id;
+                tile.addEventListener('click', () => selectTile(tile, 'term'));
+                termsContainer.appendChild(tile);
+            });
+
+            shuffledDefinitions.forEach(item => {
+                const tile = document.createElement('div');
+                tile.className = 'tile p-4 bg-white border border-gray-300 rounded-lg shadow-sm text-sm';
+                tile.textContent = item.definition;
+                tile.dataset.id = item.id;
+                tile.addEventListener('click', () => selectTile(tile, 'definition'));
+                definitionsContainer.appendChild(tile);
+            });
+        }
+
+        function selectTile(tile, type) {
+            if (tile.classList.contains('correct') || isChecking) return;
+
+            const activeSelector = 'selected';
+            
+            if (type === 'term') {
+                if(selectedTerm) selectedTerm.classList.remove(activeSelector);
+                selectedTerm = tile;
+            } else {
+                if(selectedDefinition) selectedDefinition.classList.remove(activeSelector);
+                selectedDefinition = tile;
+            }
+            
+            tile.classList.add(activeSelector);
+
+            // Sprawdź, czy para jest gotowa do oceny
+            if (selectedTerm && selectedDefinition) {
+                checkPair();
+            }
+        }
+
+        // --- POPRAWIONA FUNKCJA ---
+        function checkPair() {
+            isChecking = true; // Zablokuj możliwość klikania
+            const termId = selectedTerm.dataset.id;
+            const defId = selectedDefinition.dataset.id;
+
+            // Zapisz referencje do kafelków w lokalnych zmiennych
+            const termElement = selectedTerm;
+            const definitionElement = selectedDefinition;
+
+            // Zresetuj globalny wybór
+            selectedTerm = null;
+            selectedDefinition = null;
+
+            if (termId === defId) {
+                // Poprawna para
+                termElement.classList.add('correct');
+                definitionElement.classList.add('correct');
+                termElement.classList.remove('selected');
+                definitionElement.classList.remove('selected');
+                
+                correctPairs++;
+                showFeedback("Doskonale!", true);
+
+                if (correctPairs === gameData.length) {
+                    feedbackContainer.innerHTML = `<p class="text-2xl font-bold text-green-600">Gratulacje! Wszystkie pojęcia połączone poprawnie!</p>`;
+                }
+                isChecking = false; // Odblokuj klikanie
+            } else {
+                // Niepoprawna para
+                termElement.classList.add('incorrect');
+                definitionElement.classList.add('incorrect');
+                showFeedback("Spróbuj ponownie.", false);
+
+                // Usuń style po chwili używając lokalnych zmiennych
+                setTimeout(() => {
+                    termElement.classList.remove('incorrect', 'selected');
+                    definitionElement.classList.remove('incorrect', 'selected');
+                    isChecking = false; // Odblokuj klikanie po animacji
+                }, 600);
+            }
+        }
+
+        // --- Inicjalizacja ---
+        resetButton.addEventListener('click', createBoard);
+        createBoard();
+    });
+    </script>
+</body>
+</html>
